@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class SentenceCategories extends Model
+class SentenceCategory extends Model
 {
     //
 }
