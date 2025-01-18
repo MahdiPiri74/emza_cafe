@@ -69,4 +69,62 @@ class AuthController extends ApiController
             return $this->errorResponse('قبلا با این شماره ثبت نام شده است',422);
         }
     }
+
+    public function verifyCode(Request $request)
+    {
+        $authorization = $request->header('authorization');
+        if ($authorization)
+        {
+            $token = substr($authorization,7);
+
+            $validator = Validator::make($request->all(),[
+                'verify_code' => 'required'
+            ]);
+
+            if ($validator->fails())
+            {
+                return $this->errorResponse($validator->errors(),422);
+            }
+
+            $user = User::where('token',$token)->first();
+
+            if (!$user)
+            {
+                return $this->errorResponse('چنین کاربری یافت نشد',422);
+            }
+            else
+            {
+                $key = 'verify-verification-code:' . $request->ip();
+
+                $executed = RateLimiter::attempt($key,10,function (){},300);
+
+                if ($executed === true)
+                {
+                    if ($user->verification_code == $request->verify_code)
+                    {
+                        return $this->successResponse('','کد تایید وارد شده صحیح است',200);
+                    }
+                    else
+                    {
+                        return $this->errorResponse('کد تایید وارد شده صحیح نیست',422);
+                    }
+                }
+                if ($executed === false)
+                {
+                    $seconds = RateLimiter::availableIn($key);
+                    return response()->json([
+                        'message' => "تعداد درخواست‌های شما بیش از حد مجاز است. لطفا پس از " . $seconds . " ثانیه دیگر تلاش کنید.",
+                        'retry_after' => $seconds
+                    ], 429);
+                }
+            }
+        }
+        else
+        {
+            return $this->errorResponse('مشکلی در درخواست ارسال شده وجود دارد',422);
+        }
+
+    }
 }
+
+
