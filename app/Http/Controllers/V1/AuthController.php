@@ -129,7 +129,7 @@ class AuthController extends ApiController
 
     public function completedRegister(Request $request)
     {
-        $validator = Validator::make($request->all(),[
+        $validator = Validator::make($request->all(), [
             'first_name' => 'required',
             'last_name' => 'required',
             'gender' => 'nullable',
@@ -138,28 +138,26 @@ class AuthController extends ApiController
             'city_id' => 'required',
         ]);
 
-        if ($validator->fails())
-        {
-                return $this->errorResponse($validator->errors(),422);
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors(), 422);
         }
         $authorization = $request->header('authorization');
-        $token = substr($authorization,7);
-        $user = User::where('token',$token)->first();
-        if (!$user)
-        {
-            return $this->errorResponse('چنین کاربری یافت نشد',422);
+        $token = substr($authorization, 7);
+        $user = User::where('token', $token)->first();
+        if (!$user) {
+            return $this->errorResponse('چنین کاربری یافت نشد', 422);
         }
         $user->update([
             'first_name' => $request->first_name,
             'last_name' => $request->last_name,
-            'gender' => ( $request->has('gender') ? $request->gender : null),
+            'gender' => ($request->has('gender') ? $request->gender : null),
             'birthday' => $request->birthday,
             'province_id' => $request->province_id,
             'city_id' => $request->city_id,
             'verify_at' => Carbon::now()
         ]);
 
-        return $this->successResponse($user,'ثبت نام تکمیل شد',200);
+        return $this->successResponse($user, 'ثبت نام تکمیل شد', 200);
     }
 
 }
