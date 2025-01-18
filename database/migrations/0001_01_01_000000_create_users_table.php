@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('last_name')->nullable();
             $table->string('mobile_number')->unique();
             $table->string('birthday')->nullable();
+            $table->string('verification_code');
             $table->boolean('gender')->nullable();
             $table->timestamp('verify_at')->nullable();
             $table->string('token')->nullable();
