@@ -6,10 +6,11 @@ use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Carbon\Carbon;
-use http\Env\Response;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Validator;
+use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends ApiController
 {
@@ -25,10 +26,8 @@ class AuthController extends ApiController
 
         $key = 'send-verification-code:' . $request->ip();
 
-        $verificationCode = rand(100000, 999999);
-
+        $verificationCode = Hash::make(rand(100000, 999999));
         $user = User::where('mobile_number', $request->mobile_number)->first();
-
         if (!$user) {
             $user = User::create([
                 'mobile_number' => $request->mobile_number,
@@ -47,26 +46,33 @@ class AuthController extends ApiController
                 }, 300);
 
             if ($executed === true) {
-                $token = $user->createToken('emza_cafe', ['*'], Carbon::now()->addMonths(3))->plainTextToken;
+                $token = $user->createToken('emza_cafe', ['*'], now()->addMonths(3))->plainTextToken;
 
                 $user->update([
                     'token' => $token
                 ]);
 
-                return $this->successResponse($token, 'ثبت نام انجام شد', 200);
+                return $this->successResponse($token, 'کد تایید برای کاربر ارسال شد', Response::HTTP_OK);
 
             } else {
                 $seconds = RateLimiter::availableIn($key);
                 return response()->json([
                     'message' => "تعداد درخواست‌های شما بیش از حد مجاز است. لطفا پس از " . $seconds . " ثانیه دیگر تلاش کنید.",
                     'retry_after' => $seconds
-                ], 429);
+                ], Response::HTTP_TOO_MANY_REQUESTS);
             }
 
         }
         else
         {
-            return $this->errorResponse('قبلا با این شماره ثبت نام شده است',422);
+            if ($user->verify_at == null)
+            {
+                return $this->errorResponse(' قبلا با این شماره ثبت نام شده است اما ثبت نام هنوز تکمیل نشده است',403);
+            }
+            else
+            {
+                return $this->successResponse($user->token,'این کاربر قبلا تایید شده است و نیازی به تکمیل ثبت نام نیست',300);
+            }
         }
     }
 }
