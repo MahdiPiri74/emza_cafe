@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Validator;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends ApiController
@@ -24,117 +25,168 @@ class AuthController extends ApiController
             return $this->errorResponse($validator->errors(), 422);
         }
 
-        $key = 'send-verification-code:' . $request->ip();
-
-        $verificationCode = Hash::make(rand(100000, 999999));
         $user = User::where('mobile_number', $request->mobile_number)->first();
-        if (!$user) {
 
-            $user = User::create([
-                'mobile_number' => $request->mobile_number,
-                'verification_code' => $verificationCode
-            ]);
-            $mobileNumber = $user->mobile_number;
 
-            $executed = RateLimiter::attempt(
-                $key,
-                2,
-                function () use ($mobileNumber) {
-                    //send code
 
-                    //end send code
+        $key = 'send-verification-code:' . $request->ip() . ":" . $request->mobile_number;
 
-                }, 300);
-
-            if ($executed === true) {
-                $token = $user->createToken('emza_cafe', ['*'], now()->addMonths(3))->plainTextToken;
-
-                $user->update([
-                    'token' => $token
-                ]);
-
-                return $this->successResponse($token, 'کد تایید برای کاربر ارسال شد', Response::HTTP_OK);
-
-            } else {
-                $seconds = RateLimiter::availableIn($key);
-                return response()->json([
-                    'message' => "تعداد درخواست‌های شما بیش از حد مجاز است. لطفا پس از " . $seconds . " ثانیه دیگر تلاش کنید.",
-                    'retry_after' => $seconds
-                ], Response::HTTP_TOO_MANY_REQUESTS);
-            }
+        if (!RateLimiter::attempt($key,3,null,300))
+        {
+            $seconds = RateLimiter::availableIn($key);
+            return response()->json([
+                'message' => "تعداد درخواست‌های شما بیش از حد مجاز است. لطفا پس از " . $seconds . " ثانیه دیگر تلاش کنید.",
+                'retry_after' => $seconds
+            ], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+        $verificationCode = rand(100000, 999999);
+        if (!$user)
+        {
+           $this->createNewUserWithCode($request->mobile_number,$verificationCode);
+           return $this->sendVerificationCode($user, $verificationCode);
 
         }
-        else
+
+        $this->checkToken($user);
+
+        $user->update([
+            'verification_code' => Hash::make($verificationCode),
+            'expired_at' => now()->addMinutes(2),
+        ]);
+
+        $this->sendSms($user->mobile_number, $verificationCode);
+
+        return $this->successResponse($user->token, 'کد تأیید ارسال شد.', Response::HTTP_OK);
+
+
+    }
+
+    private function sendVerificationCode($user, $verificationCode)
+    {
+        $token = $user->createToken('emza_cafe', ['*'], now()->addMonths(3))->plainTextToken;
+
+        $user->update(['token' => $token]);
+        $this->sendSms($user->mobile_number, $verificationCode);
+
+        return $this->successResponse($token, 'کد تأیید ارسال شد.', Response::HTTP_OK);
+    }
+
+    private function createNewUserWithCode($mobileNumber, $verificationCode)
+    {
+        return User::create([
+            'mobile_number' => $mobileNumber,
+            'verification_code' => Hash::make($verificationCode),
+            'expired_at' => now()->addMinutes(2),
+        ]);
+    }
+
+    public function sendSms($mobileNumber, $verificationCode)
+    {
+
+    }
+
+    public function checkToken($user)
+    {
+        $token = PersonalAccessToken::where('tokenable_id', $user->id)->latest('created_at')->first();
+
+        if ($token && !$token->expires_at < now())
         {
-            if ($user->verify_at == null)
-            {
-                return $this->errorResponse(' قبلا با این شماره ثبت نام شده است اما ثبت نام هنوز تکمیل نشده است',403);
-            }
-            else
-            {
-                return $this->successResponse($user->token,'این کاربر قبلا تایید شده است و نیازی به تکمیل ثبت نام نیست',300);
-            }
+            $newToken = $user->createToken('emza_cafe', ['*'], now()->addMonths(3))->plainTextToken;
+            $user->update([
+                'token' => $newToken,
+            ]);
         }
     }
 
-    public function verifyCode(Request $request)
+    public function resendCode(Request $request)
     {
-        $authorization = $request->header('authorization');
-        if ($authorization)
-        {
-            $token = substr($authorization,7);
+        $user = User::where('token', $request->token)->first();
 
-            $validator = Validator::make($request->all(),[
-                'verify_code' => 'required'
+        $key = 'send-verification-code:' . $request->ip() . ":" . $user->mobile_number;
+
+        $rateLimiter = RateLimiter::attempt($key, 2, function () use ($user) {
+            $verificationCode = rand(100000, 999999);
+
+            $user->update([
+                'verification_code' => Hash::make($verificationCode),
+                'expired_at' => now()->addMinutes(2)
             ]);
 
-            if ($validator->fails())
-            {
-                return $this->errorResponse($validator->errors(),422);
-            }
+            $this->sendSms($user->mobile_number, $verificationCode);
 
-            $user = User::where('token',$token)->first();
+        }, 600);
 
-            if (!$user)
-            {
-                return $this->errorResponse('چنین کاربری یافت نشد',422);
-            }
-            else
-            {
-                $key = 'verify-verification-code:' . $request->ip();
+        if ($rateLimiter === true) {
+            return $this->successResponse($user->token, 'کد تایید ارسال شد', Response::HTTP_OK);
+        } else {
+            $seconds = RateLimiter::availableIn($key);
 
-                $executed = RateLimiter::attempt($key,10,function (){},300);
-
-                if ($executed === true)
-                {
-                    if ($user->verification_code == $request->verify_code)
-                    {
-                        return $this->successResponse('','کد تایید وارد شده صحیح است',200);
-                    }
-                    else
-                    {
-                        return $this->errorResponse('کد تایید وارد شده صحیح نیست',422);
-                    }
-                }
-                if ($executed === false)
-                {
-                    $seconds = RateLimiter::availableIn($key);
-                    return response()->json([
-                        'message' => "تعداد درخواست‌های شما بیش از حد مجاز است. لطفا پس از " . $seconds . " ثانیه دیگر تلاش کنید.",
-                        'retry_after' => $seconds
-                    ], 429);
-                }
-            }
+            return response()->json([
+                'message' => "تعداد درخواست‌های شما بیش از حد مجاز است. لطفا پس از " . $seconds . " ثانیه دیگر تلاش کنید.",
+                'retry_after' => $seconds
+            ], Response::HTTP_TOO_MANY_REQUESTS);
         }
-        else
-        {
-            return $this->errorResponse('مشکلی در درخواست ارسال شده وجود دارد',422);
+    }
+
+    private function extractToken($authorizationHeader)
+    {
+        if ($authorizationHeader && str_starts_with($authorizationHeader, 'Bearer ')) {
+            return substr($authorizationHeader, 7);
+        }
+        return null;
+    }
+
+
+    public function verifyCode(Request $request)
+    {
+        $token = $this->extractToken($request->header('authorization'));
+
+        if (!$token) {
+            return $this->errorResponse('توکن معتبر نیست', Response::HTTP_UNAUTHORIZED);
         }
 
+        $validator = Validator::make($request->all(), [
+            'verify_code' => 'required'
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors(), Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $user = User::where('token', $token)->first();
+
+        if (!$user) {
+            return $this->errorResponse('چنین کاربری یافت نشد', Response::HTTP_NOT_FOUND);
+        }
+        $key = 'verify-verification-code:' . $request->ip() . ":" . $user->mobile_number;
+
+        if (!RateLimiter::attempt($key, 3, null, 300)) {
+            $seconds = RateLimiter::availableIn($key);
+            return response()->json([
+                'message' => "تعداد درخواست‌های شما بیش از حد مجاز است. لطفا پس از " . $seconds . " ثانیه دیگر تلاش کنید.",
+                'retry_after' => $seconds
+            ], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
+        if (!Hash::check($request->verify_code, $user->verification_code)) {
+            return $this->errorResponse('کد تایید وارد شده صحیح نیست', Response::HTTP_BAD_REQUEST);
+        }
+
+        if ($user->verify_at != null) {
+            return $this->successResponse($user, ' کد تایید وارد شده صحیح است و نیازی به تکمیل ثبت نام نیست', Response::HTTP_OK);
+        }
+
+        return $this->successResponse($user->token, ' کد تایید وارد شده صحیح است و کاربر باید به صفحه تکمیل ثبت نام هدایت شود', Response::HTTP_SEE_OTHER);
     }
 
     public function completedRegister(Request $request)
     {
+        $token = $this->extractToken($request->header('authorization'));
+
+        if (!$token) {
+            return $this->errorResponse('توکن معتبر نیست', Response::HTTP_UNAUTHORIZED);
+        }
+
         $validator = Validator::make($request->all(), [
             'first_name' => 'required',
             'last_name' => 'required',
@@ -145,14 +197,15 @@ class AuthController extends ApiController
         ]);
 
         if ($validator->fails()) {
-            return $this->errorResponse($validator->errors(), 422);
+            return $this->errorResponse($validator->errors(), Response::HTTP_UNPROCESSABLE_ENTITY);
         }
-        $authorization = $request->header('authorization');
-        $token = substr($authorization, 7);
+
         $user = User::where('token', $token)->first();
+
         if (!$user) {
-            return $this->errorResponse('چنین کاربری یافت نشد', 422);
+            return $this->errorResponse('چنین کاربری یافت نشد', Response::HTTP_NOT_FOUND);
         }
+
         $user->update([
             'first_name' => $request->first_name,
             'last_name' => $request->last_name,
@@ -163,9 +216,14 @@ class AuthController extends ApiController
             'verify_at' => Carbon::now()
         ]);
 
-        return $this->successResponse($user, 'ثبت نام تکمیل شد', 200);
+        return $this->successResponse($user, 'ثبت نام تکمیل شد', Response::HTTP_OK);
+
+
     }
 
 }
+
+
+
 
 
