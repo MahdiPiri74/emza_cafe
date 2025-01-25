@@ -27,11 +27,9 @@ class AuthController extends ApiController
 
         $user = User::where('mobile_number', $request->mobile_number)->first();
 
-
-
         $key = 'send-verification-code:' . $request->ip() . ":" . $request->mobile_number;
 
-        if (!RateLimiter::attempt($key,3,null,300))
+        if (!RateLimiter::attempt($key,3,function (){},300))
         {
             $seconds = RateLimiter::availableIn($key);
             return response()->json([
@@ -40,9 +38,10 @@ class AuthController extends ApiController
             ], Response::HTTP_TOO_MANY_REQUESTS);
         }
         $verificationCode = rand(100000, 999999);
+        var_dump($verificationCode);
         if (!$user)
         {
-           $this->createNewUserWithCode($request->mobile_number,$verificationCode);
+           $user = $this->createNewUserWithCode($request->mobile_number,$verificationCode);
            return $this->sendVerificationCode($user, $verificationCode);
 
         }
@@ -160,7 +159,7 @@ class AuthController extends ApiController
         }
         $key = 'verify-verification-code:' . $request->ip() . ":" . $user->mobile_number;
 
-        if (!RateLimiter::attempt($key, 3, null, 300)) {
+        if (!RateLimiter::attempt($key, 3, function (){}, 300)) {
             $seconds = RateLimiter::availableIn($key);
             return response()->json([
                 'message' => "تعداد درخواست‌های شما بیش از حد مجاز است. لطفا پس از " . $seconds . " ثانیه دیگر تلاش کنید.",
