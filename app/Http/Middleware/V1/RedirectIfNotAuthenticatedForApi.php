@@ -4,7 +4,10 @@ namespace App\Http\Middleware\V1;
 
 use Closure;
 use Illuminate\Http\Request;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
+use App\Models\User;
+
 
 class RedirectIfNotAuthenticatedForApi
 {
@@ -15,11 +18,16 @@ class RedirectIfNotAuthenticatedForApi
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if ( !auth()->check() )
+        //check token and expired token
+        $token = substr($request->header('authorization'),7);
+        $user = User::where('token',$token)->first();
+        $personalToken = PersonalAccessToken::where('tokenable_id', $user->id)->latest('created_at')->first();
+
+        if ( !$user || $personalToken->expires_at < now() )
         {
-            return response()->json([
+            return \response()->json([
                 'status' => 'error',
-                'message' => 'لطفا در ابتدا وارد حساب کاربری خود شوید'
+                'message' => 'ابتدا وارد حساب کاربری خود شوید'
             ],401);
         }
         return $next($request);

@@ -217,7 +217,6 @@ class AuthController extends ApiController
 
         return $this->successResponse($user, 'ثبت نام تکمیل شد', Response::HTTP_OK);
 
-
     }
 
 }
