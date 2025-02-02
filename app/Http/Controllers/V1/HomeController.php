@@ -2,16 +2,6 @@
 
 namespace App\Http\Controllers\V1;
 
-<<<<<<< HEAD
-use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-
-class HomeController extends Controller
-{
-    public function index()
-    {
-        dd(auth()->user()->first_name);
-=======
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Models\Banner;
@@ -150,6 +140,6 @@ class HomeController extends ApiController
         }
 
         return $this->successResponse($data,'',Response::HTTP_OK);
->>>>>>> feature/home-api
+
     }
 }
