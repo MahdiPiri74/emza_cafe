@@ -14,25 +14,32 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('/v1/')->group(function (){
-    Route::post('register/send-code', [AuthController::class,'sendCode']);
 
-    Route::post('register/verify-code', [AuthController::class,'verifyCode']);
+    Route::prefix('register')->group(function (){
 
-    Route::post('register/completed-register', [AuthController::class,'completedRegister']);
+        Route::post('/send-code', [AuthController::class,'sendCode']);
+
+        Route::post('/verify-code', [AuthController::class,'verifyCode']);
+
+        Route::post('/completed-register', [AuthController::class,'completedRegister']);
+
+        Route::post('resend-code',[[AuthController::class,'resendCode']]);
+    });
 
     Route::get('cities-and-provinces', [CityProvinceController::class,'index']);
 
-    Route::post('resend-code',[[AuthController::class,'resendCode']]);
+    Route::prefix('home')->group(function (){
 
-    Route::get('home/coffee-menu', [HomeController::class,'index'])->middleware('auth.api');
+        Route::get('/coffee-menu', [HomeController::class,'index'])->middleware('auth.api');
 
-    Route::get('home/banners',[HomeController::class,'showBanner']);
+        Route::get('/banners',[HomeController::class,'showBanner']);
 
-    Route::get('home/search',[HomeController::class,'search']);
+        Route::get('/search',[HomeController::class,'search']);
 
-    Route::get('home/sentences', [HomeController::class,'showSentenceCategories']);
+        Route::get('/sentences', [HomeController::class,'showSentenceCategories']);
 
-    Route::get('home/sentences/show', [HomeController::class,'showSentences']);
+        Route::get('/sentences/show', [HomeController::class,'showSentences']);
+    });
 
     Route::get('banner/products',[HomeController::class,'showProductsForBanner']);
 
@@ -40,11 +47,14 @@ Route::prefix('/v1/')->group(function (){
 
     Route::post('orders',[OrderController::class,'addToBasket'])->middleware('auth.api');
 
-    Route::get('address',[AddressController::class,'index'])->middleware('auth.api');
+    Route::prefix('address')->group(function (){
 
-    Route::post('address',[AddressController::class,'createAddress'])->middleware('auth.api');
+        Route::get('/',[AddressController::class,'index'])->middleware('auth.api');
 
-    Route::put('address',[AddressController::class,'updateAddress']);
+        Route::post('/',[AddressController::class,'createAddress'])->middleware('auth.api');
+
+        Route::put('/',[AddressController::class,'updateAddress']);
+    });
 
     Route::prefix('profile')->group(function (){
 
@@ -61,22 +71,24 @@ Route::prefix('/v1/')->group(function (){
     });
 
     Route::prefix('cart')->middleware('auth.api')->group(function (){
+
         Route::get('/',[CartController::class,'index']);
+
         Route::post('/increase-quantity',[CartController::class,'increaseQuantity']);
+
         Route::post('/decrease-quantity',[CartController::class,'decreaseQuantity']);
+
         Route::post('/update-sentence-info',[CartController::class,'updateSenderAndReceiver']);
+
         Route::post('/discount',[CartController::class,'calculateDiscount']);
-        Route::post('/order',[CartController::class,'createOrder']);
     });
 
 });
 
 Route::prefix('/payment')->group(function (){
+
     Route::post('/send',[PaymentController::class,'send']);
+
     Route::get('/verify',[PaymentController::class,'verify']);
-});
-
-Route::get('/test',function (){
-
 });
 

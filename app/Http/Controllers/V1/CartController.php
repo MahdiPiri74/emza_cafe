@@ -15,10 +15,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class CartController extends ApiController
 {
-
     const COUPON_TYPE_FIXED = 0;
     const COUPON_TYPE_PERCENTAGE = 1;
-
     public function index(Request $request)
     {
         $user = $this->getTokenAndUser($request);
@@ -87,7 +85,6 @@ class CartController extends ApiController
 
         return $this->successResponse('','تعداد محصول موجود در سبد خرید شما افزایش پیدا کرد',Response::HTTP_OK);
     }
-
     public function decreaseQuantity(Request $request)
     {
         $validator = Validator::make($request->all(),[
@@ -143,7 +140,6 @@ class CartController extends ApiController
 
         return $this->successResponse($orderItem,'امضا تغییر کرد',Response::HTTP_OK);
     }
-
     public function calculateDiscount(Request $request)
     {
         $validator = Validator::make($request->all(),[
@@ -209,71 +205,6 @@ class CartController extends ApiController
         return false;
     }
 
-    public function createOrder(Request $request)
-    {
-        $validator = Validator::make($request->all(),[
-            'coupon_id' => 'nullable',
-            'payment_method' => 'required',
-            'delivery_address_id'  => 'nullable',
-            'delivery_cost'  => 'nullable'
-        ]);
 
-        if ($validator->fails())
-        {
-            return $this->errorResponse($validator->errors(),Response::HTTP_UNPROCESSABLE_ENTITY);
-        }
-
-        $user = $this->getTokenAndUser($request);
-
-        $cart = OrderItem::where('user_id',$user->id)->where('status',0)->with(['product','sentence'])->get();
-
-        if ($cart->isEmpty())
-        {
-            return $this->errorResponse('سبد خرید شما خالیست',Response::HTTP_NOT_FOUND);
-        }
-
-        $price = 0;
-
-        foreach ($cart as $item)
-        {
-            $price += $item->product->price * $item->quantity;
-        }
-
-        $discountPrice = 0;
-
-        if ($request->has('coupon_id'))
-        {
-            $coupon = Coupon::where('id',$request->coupon_id)->first();
-
-            if (!$coupon)
-            {
-                return $this->errorResponse('چنین کدی یافت نشد',Response::HTTP_NOT_FOUND);
-            }
-
-            $infoDiscount = $this->calculateDiscount(new Request([
-                'code' => $coupon->code,
-                'total_price' => $price
-            ]));
-            $response = json_decode($infoDiscount->getContent(),true);
-
-            $discountPrice = $response['discount_price'];
-        }
-
-        $totalPrice = $price-$discountPrice;
-
-        Order::create([
-           'user_id' => $user->id,
-            'payment_method' => $request->payment_method,
-            'price' => $price,
-            'discount_price' => $discountPrice,
-            'total_price' => $totalPrice,
-            'coupon_id' => $request->has('coupon_id') ? $request->coupon_id : null,
-            'delivery_address_id'  => ( $request->payment_method == 0 ? null : $request->delivery_address_id ),
-            'delivery_cost'  => ( $request->payment_method == 0 ? null : $request->delivery_cost ),
-            'status' => 0
-        ]);
-
-
-    }
 
 }

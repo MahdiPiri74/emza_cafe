@@ -8,10 +8,12 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
+use Ipe\Sdk\Facades\SmsIr;
 
 class AuthController extends ApiController
 {
@@ -21,7 +23,8 @@ class AuthController extends ApiController
             'mobile_number' => "required|regex:/^09[0-9]{2}[0-9]{7}$/"
         ]);
 
-        if ($validator->fails()) {
+        if ($validator->fails())
+        {
             return $this->errorResponse($validator->errors(), 422);
         }
 
@@ -29,7 +32,7 @@ class AuthController extends ApiController
 
         $key = 'send-verification-code:' . $request->ip() . ":" . $request->mobile_number;
 
-        if (!RateLimiter::attempt($key,3,function (){},300))
+        if (!RateLimiter::attempt($key,3,function (){},10))
         {
             $seconds = RateLimiter::availableIn($key);
             return response()->json([
@@ -57,9 +60,7 @@ class AuthController extends ApiController
 
         return $this->successResponse($user->token, 'کد تأیید ارسال شد.', Response::HTTP_OK);
 
-
     }
-
     private function sendVerificationCode($user, $verificationCode)
     {
         $token = $user->createToken('emza_cafe', ['*'], now()->addMonths(3))->plainTextToken;
@@ -69,7 +70,36 @@ class AuthController extends ApiController
 
         return $this->successResponse($token, 'کد تأیید ارسال شد.', Response::HTTP_OK);
     }
+    public function sendSms($mobileNumber, $verificationCode)
+    {
+        $mobile = $mobileNumber;
+        $templateId = 123456;
+        var_dump($verificationCode);
+        $parameters = [
+            [
+                "name" => "Code",
+                "value" => $verificationCode
+            ]
+        ];
 
+        try {
+
+            $response = SmsIr::verifySend($mobile, $templateId, $parameters);
+
+            if ($response->status == 1) {
+                var_dump($response->data['messageId']);
+                return $this->successResponse($response, 'کد تایید برای کاربر ارسال شد', Response::HTTP_OK);
+            } else {
+                return $this->errorResponse('خطا در ارسال پیامک: ' , Response::HTTP_INTERNAL_SERVER_ERROR);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Error sending SMS: ' . $e->getMessage());
+            return $this->errorResponse('خطا در ارسال پیامک', Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+
+    }
     private function createNewUserWithCode($mobileNumber, $verificationCode)
     {
         return User::create([
@@ -78,12 +108,6 @@ class AuthController extends ApiController
             'expired_at' => now()->addMinutes(2),
         ]);
     }
-
-    public function sendSms($mobileNumber, $verificationCode)
-    {
-
-    }
-
     public function checkToken($user)
     {
         $token = PersonalAccessToken::where('tokenable_id', $user->id)->latest('created_at')->first();
@@ -96,10 +120,14 @@ class AuthController extends ApiController
             ]);
         }
     }
-
     public function resendCode(Request $request)
     {
         $user = User::where('token', $request->token)->first();
+
+        if (!$user)
+        {
+            return $this->errorResponse('چنین کاربری یافت نشد',Response::HTTP_NOT_FOUND);
+        }
 
         $key = 'send-verification-code:' . $request->ip() . ":" . $user->mobile_number;
 
@@ -126,7 +154,6 @@ class AuthController extends ApiController
             ], Response::HTTP_TOO_MANY_REQUESTS);
         }
     }
-
     private function extractToken($authorizationHeader)
     {
         if ($authorizationHeader && str_starts_with($authorizationHeader, 'Bearer ')) {
@@ -134,8 +161,6 @@ class AuthController extends ApiController
         }
         return null;
     }
-
-
     public function verifyCode(Request $request)
     {
         $token = $this->extractToken($request->header('authorization'));
@@ -154,9 +179,11 @@ class AuthController extends ApiController
 
         $user = User::where('token', $token)->first();
 
-        if (!$user) {
+        if (!$user)
+        {
             return $this->errorResponse('چنین کاربری یافت نشد', Response::HTTP_NOT_FOUND);
         }
+
         $key = 'verify-verification-code:' . $request->ip() . ":" . $user->mobile_number;
 
         if (!RateLimiter::attempt($key, 3, function (){}, 300)) {
@@ -177,7 +204,6 @@ class AuthController extends ApiController
 
         return $this->successResponse($user->token, ' کد تایید وارد شده صحیح است و کاربر باید به صفحه تکمیل ثبت نام هدایت شود', Response::HTTP_SEE_OTHER);
     }
-
     public function completedRegister(Request $request)
     {
         $token = $this->extractToken($request->header('authorization'));

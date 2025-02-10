@@ -20,10 +20,10 @@ class AddressController extends ApiController
 
         if ( $addresses->isEmpty() )
         {
-            return $this->successResponse(null,'هیچ آدرسی ثبت نشده است',Response::HTTP_OK);
+            return $this->errorResponse('هیچ آدرسی ثبت نشده است',Response::HTTP_OK);
         }
 
-        return $this->successResponse($addresses,'',Response::HTTP_OK);
+        return $this->successResponse($addresses,'آدرس های کاربر بازگشت داده شدند',Response::HTTP_OK);
     }
 
     private function getTokenAndUser($request)
@@ -86,7 +86,7 @@ class AddressController extends ApiController
 
         if (!$address)
         {
-            return $this->errorResponse('آدرسی یافت نشد',Response::HTTP_NOT_FOUND);
+            return $this->errorResponse('کاربر هیچ آدرسی ثبت نکرده است',Response::HTTP_NOT_FOUND);
         }
 
         $address->update([
@@ -95,6 +95,6 @@ class AddressController extends ApiController
             'call_number' => $request->has('call_number') ? $request->call_number : $address->call_number
         ]);
 
-        return $this->successResponse(null,'آدرس با موفقیت آپدیت شد',Response::HTTP_OK);
+        return $this->successResponse(null,'آدرس کاربر آپدیت شد',Response::HTTP_OK);
     }
 }
